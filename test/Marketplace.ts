@@ -48,40 +48,31 @@ describe('Marketplace', function () {
   describe('Create Listing', function () {
     it('Cannot creating listing for non-erc721', async function () {
       let sevenDays = 60 * 60 * 24 * 7;
-      const params = {
-        assetContract: erc20Test.target,
-        tokenId: 1,
-        price: tokens('0.01'),
-        endTimestamp: (await time.latest()) + sevenDays,
-      };
-      await expect(marketplace.createListing(params, { value: tokens('0.01') }))
+      await expect(
+        marketplace.createListing(
+          erc20Test.target,
+          1,
+          tokens('0.01'),
+          sevenDays,
+          { value: tokens('0.01') }
+        )
+      )
         .to.be.revertedWithCustomError(marketplace, 'NotERC721')
         .withArgs(erc20Test.target);
-    });
-
-    it('Cannot create listing with end date before the start date', async function () {
-      let sevenDays = 60 * 60 * 24 * 7;
-      const params = {
-        assetContract: erc721Test.target,
-        tokenId: 1,
-        price: tokens('0.01'),
-        endTimestamp: (await time.latest()) - sevenDays,
-      };
-      await expect(marketplace.createListing(params, { value: tokens('0.01') }))
-        .to.be.revertedWithCustomError(marketplace, 'InvalidEndTime')
-        .withArgs(params.endTimestamp);
     });
 
     it('Need to be the owner', async function () {
       await erc721Test.connect(addr1).mint();
       let sevenDays = 60 * 60 * 24 * 7;
-      const params = {
-        assetContract: erc721Test.target,
-        tokenId: 1,
-        price: tokens('0.01'),
-        endTimestamp: (await time.latest()) + sevenDays,
-      };
-      await expect(marketplace.createListing(params, { value: tokens('0.01') }))
+      await expect(
+        marketplace.createListing(
+          erc721Test.target,
+          1,
+          tokens('0.01'),
+          sevenDays,
+          { value: tokens('0.01') }
+        )
+      )
         .to.be.revertedWithCustomError(marketplace, 'NotTheOwner')
         .withArgs(owner.address);
     });
@@ -89,52 +80,279 @@ describe('Marketplace', function () {
     it('Need to approve the market before listing', async function () {
       await erc721Test.connect(owner).mint();
       let sevenDays = 60 * 60 * 24 * 7;
-      const params = {
-        assetContract: erc721Test.target,
-        tokenId: 1,
-        price: tokens('0.01'),
-        endTimestamp: (await time.latest()) + sevenDays,
-      };
       await expect(
-        marketplace.createListing(params, { value: tokens('0.01') })
+        marketplace.createListing(
+          erc721Test.target,
+          1,
+          tokens('0.01'),
+          sevenDays,
+          { value: tokens('0.01') }
+        )
       ).to.be.revertedWithCustomError(marketplace, 'MarketNotApproved');
     });
 
     it('Creates the listing', async function () {
+      expect(await marketplace.getListingStatus(1)).to.equal(0);
       await erc721Test.connect(owner).mint();
       let sevenDays = 60 * 60 * 24 * 7;
-      const params = {
-        assetContract: erc721Test.target,
-        tokenId: 1,
-        price: tokens('0.01'),
-        endTimestamp: (await time.latest()) + sevenDays,
-      };
       await erc721Test.approve(marketplace.target, 1);
-      await marketplace.createListing(params, { value: tokens('0.01') });
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
       let listing = await marketplace.listings(1);
       expect(listing.listingId).to.equal(1);
       expect(listing.tokenId).to.equal(1);
       expect(listing.price).to.equal(tokens('0.01'));
-      expect(listing.startTimestamp).to.equal(await time.latest());
+      expect(listing.startTime).to.equal(await time.latest());
       expect(listing.seller).to.equal(owner);
       expect(listing.assetContract).to.equal(erc721Test.target);
-      expect(listing.status).to.equal(1);
+      expect(listing.sold).to.equal(false);
+      expect(listing.canceled).to.equal(false);
+      expect(await marketplace.getListingStatus(1)).to.equal(1);
     });
 
     it('Emits create listing event', async function () {
       await erc721Test.connect(owner).mint();
       let sevenDays = 60 * 60 * 24 * 7;
-      const params = {
-        assetContract: erc721Test.target,
-        tokenId: 1,
-        price: tokens('0.01'),
-        endTimestamp: (await time.latest()) + sevenDays,
-      };
       await erc721Test.approve(marketplace.target, 1);
-      const tx = await marketplace.createListing(params, {
-        value: tokens('0.01'),
-      });
+      const tx = await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        {
+          value: tokens('0.01'),
+        }
+      );
       await expect(tx).to.emit(marketplace, 'ListingCreated').withArgs(1);
+    });
+  });
+
+  describe('Cancel Listing', function () {
+    it('Can only cancel listing if seller', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+
+      await expect(
+        marketplace.connect(addr1).cancelListing(1)
+      ).to.be.revertedWithCustomError(marketplace, 'OnlySeller');
+    });
+
+    it('Can only cancel active listing', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+
+      await marketplace.cancelListing(1);
+
+      await expect(marketplace.cancelListing(1))
+        .to.be.revertedWithCustomError(marketplace, 'ListingNotActive')
+        .withArgs(1);
+    });
+
+    it('Status updated', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+
+      await marketplace.cancelListing(1);
+      let listing = await marketplace.listings(1);
+      expect(listing.canceled).to.equal(true);
+      expect(await marketplace.getListingStatus(1)).to.equal(4);
+    });
+
+    it('Listing Canceled Event emitted', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+
+      const tx = await marketplace.cancelListing(1);
+      await expect(tx).to.emit(marketplace, 'ListingCanceled').withArgs(1);
+    });
+  });
+
+  describe('Updates', function () {
+    it('Cannot update price if not the seller', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      await expect(
+        marketplace.connect(addr1).updatePrice(1, tokens('0.02'))
+      ).to.be.revertedWithCustomError(marketplace, 'OnlySeller');
+    });
+
+    it('Cannot update price if not active listing', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      await marketplace.cancelListing(1);
+      await expect(marketplace.updatePrice(1, tokens('0.02')))
+        .to.be.revertedWithCustomError(marketplace, 'ListingNotActive')
+        .withArgs(1);
+    });
+
+    it('Price is updated correctly', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      await marketplace.updatePrice(1, tokens('0.02'));
+      let listing = await marketplace.listings(1);
+      expect(listing.price).to.equal(tokens('0.02'));
+    });
+
+    it('Price change event emitted', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      const tx = await marketplace.updatePrice(1, tokens('0.02'));
+      await expect(tx)
+        .to.emit(marketplace, 'PriceUpdated')
+        .withArgs(1, tokens('0.02'));
+    });
+
+    it('Cannot update closing date if not the seller', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      await expect(
+        marketplace
+          .connect(addr1)
+          .updateClosingTime(1, (await time.latest()) + sevenDays)
+      ).to.be.revertedWithCustomError(marketplace, 'OnlySeller');
+    });
+
+    it('Cannot update closing date if listing not active', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      await network.provider.send('evm_increaseTime', [sevenDays]);
+      await network.provider.send('evm_mine');
+      await expect(
+        marketplace.updateClosingTime(1, (await time.latest()) + sevenDays)
+      )
+        .to.be.revertedWithCustomError(marketplace, 'ListingNotActive')
+        .withArgs(1);
+    });
+
+    it('Closing time is updated correctly', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      let tenDays = 60 * 60 * 24 * 10;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      let newEndTime = (await time.latest()) + tenDays;
+      await marketplace.updateClosingTime(1, newEndTime);
+      let listing = await marketplace.listings(1);
+      expect(listing.closingTime).to.equal(newEndTime);
+    });
+
+    it('Closing time event emitted', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      let tenDays = 60 * 60 * 24 * 10;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        tokens('0.01'),
+        sevenDays,
+        { value: tokens('0.01') }
+      );
+      let newEndTime = (await time.latest()) + tenDays;
+      const tx = await marketplace.updateClosingTime(1, newEndTime);
+      await expect(tx)
+        .to.emit(marketplace, 'ClosingTimeUpdated')
+        .withArgs(1, newEndTime);
     });
   });
 });
