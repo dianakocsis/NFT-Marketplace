@@ -20,16 +20,20 @@ describe('Marketplace', function () {
   let erc721Test: ERC721Test;
   let owner: SignerWithAddress;
   let addr1: SignerWithAddress;
-  let addr2: SignerWithAddress;
+  let platformFeeRecipient: SignerWithAddress;
 
-  const tokens = (count: string) => ethers.parseUnits(count, 18);
+  const eth = (count: string) => ethers.parseUnits(count, 18);
 
   this.beforeEach(async function () {
-    [owner, addr1, addr2] = await ethers.getSigners();
+    [owner, platformFeeRecipient, addr1] = await ethers.getSigners();
     Marketplace = (await ethers.getContractFactory(
       'Marketplace'
     )) as Marketplace__factory;
-    marketplace = (await Marketplace.deploy()) as Marketplace;
+    marketplace = (await Marketplace.deploy(
+      owner,
+      1000,
+      platformFeeRecipient
+    )) as Marketplace;
     await marketplace.waitForDeployment();
 
     ERC20Test = (await ethers.getContractFactory(
@@ -49,13 +53,9 @@ describe('Marketplace', function () {
     it('Cannot creating listing for non-erc721', async function () {
       let sevenDays = 60 * 60 * 24 * 7;
       await expect(
-        marketplace.createListing(
-          erc20Test.target,
-          1,
-          tokens('0.01'),
-          sevenDays,
-          { value: tokens('0.01') }
-        )
+        marketplace.createListing(erc20Test.target, 1, eth('0.01'), sevenDays, {
+          value: eth('0.01'),
+        })
       )
         .to.be.revertedWithCustomError(marketplace, 'NotERC721')
         .withArgs(erc20Test.target);
@@ -68,9 +68,9 @@ describe('Marketplace', function () {
         marketplace.createListing(
           erc721Test.target,
           1,
-          tokens('0.01'),
+          eth('0.01'),
           sevenDays,
-          { value: tokens('0.01') }
+          { value: eth('0.01') }
         )
       )
         .to.be.revertedWithCustomError(marketplace, 'NotTheOwner')
@@ -84,9 +84,9 @@ describe('Marketplace', function () {
         marketplace.createListing(
           erc721Test.target,
           1,
-          tokens('0.01'),
+          eth('0.01'),
           sevenDays,
-          { value: tokens('0.01') }
+          { value: eth('0.01') }
         )
       ).to.be.revertedWithCustomError(marketplace, 'MarketNotApproved');
     });
@@ -99,14 +99,14 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       let listing = await marketplace.listings(1);
       expect(listing.listingId).to.equal(1);
       expect(listing.tokenId).to.equal(1);
-      expect(listing.price).to.equal(tokens('0.01'));
+      expect(listing.price).to.equal(eth('0.01'));
       expect(listing.startTime).to.equal(await time.latest());
       expect(listing.seller).to.equal(owner);
       expect(listing.assetContract).to.equal(erc721Test.target);
@@ -122,10 +122,10 @@ describe('Marketplace', function () {
       const tx = await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
         {
-          value: tokens('0.01'),
+          value: eth('0.01'),
         }
       );
       await expect(tx).to.emit(marketplace, 'ListingCreated').withArgs(1);
@@ -140,9 +140,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
 
       await expect(
@@ -157,9 +157,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
 
       await marketplace.cancelListing(1);
@@ -176,9 +176,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
 
       await marketplace.cancelListing(1);
@@ -195,9 +195,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
 
       const tx = await marketplace.cancelListing(1);
@@ -214,12 +214,12 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       await expect(
-        marketplace.connect(addr1).updatePrice(1, tokens('0.02'))
+        marketplace.connect(addr1).updatePrice(1, eth('0.02'))
       ).to.be.revertedWithCustomError(marketplace, 'OnlySeller');
     });
 
@@ -231,12 +231,12 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       await marketplace.cancelListing(1);
-      await expect(marketplace.updatePrice(1, tokens('0.02')))
+      await expect(marketplace.updatePrice(1, eth('0.02')))
         .to.be.revertedWithCustomError(marketplace, 'ListingNotActive')
         .withArgs(1);
     });
@@ -249,13 +249,13 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
-      await marketplace.updatePrice(1, tokens('0.02'));
+      await marketplace.updatePrice(1, eth('0.02'));
       let listing = await marketplace.listings(1);
-      expect(listing.price).to.equal(tokens('0.02'));
+      expect(listing.price).to.equal(eth('0.02'));
     });
 
     it('Price change event emitted', async function () {
@@ -266,14 +266,14 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
-      const tx = await marketplace.updatePrice(1, tokens('0.02'));
+      const tx = await marketplace.updatePrice(1, eth('0.02'));
       await expect(tx)
         .to.emit(marketplace, 'PriceUpdated')
-        .withArgs(1, tokens('0.02'));
+        .withArgs(1, eth('0.02'));
     });
 
     it('Cannot update closing date if not the seller', async function () {
@@ -284,9 +284,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       await expect(
         marketplace
@@ -303,9 +303,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       await network.provider.send('evm_increaseTime', [sevenDays]);
       await network.provider.send('evm_mine');
@@ -325,9 +325,9 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       let newEndTime = (await time.latest()) + tenDays;
       await marketplace.updateClosingTime(1, newEndTime);
@@ -344,15 +344,188 @@ describe('Marketplace', function () {
       await marketplace.createListing(
         erc721Test.target,
         1,
-        tokens('0.01'),
+        eth('0.01'),
         sevenDays,
-        { value: tokens('0.01') }
+        { value: eth('0.01') }
       );
       let newEndTime = (await time.latest()) + tenDays;
       const tx = await marketplace.updateClosingTime(1, newEndTime);
       await expect(tx)
         .to.emit(marketplace, 'ClosingTimeUpdated')
         .withArgs(1, newEndTime);
+    });
+  });
+
+  describe('Buying', function () {
+    it('Can only buy from an active listing', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.cancelListing(1);
+      await expect(marketplace.buy(1, { value: eth('0.01') }))
+        .to.be.revertedWithCustomError(marketplace, 'ListingNotActive')
+        .withArgs(1);
+    });
+
+    it('Can only buy with proper amount', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await expect(marketplace.buy(1, { value: eth('0.02') }))
+        .to.be.revertedWithCustomError(marketplace, 'IncorrectPurchaseAmount')
+        .withArgs(eth('0.01'), eth('0.02'));
+    });
+
+    it('Listing updated when bought', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.buy(1, { value: eth('0.01') });
+      let listing = await marketplace.listings(1);
+      expect(listing.sold).to.equal(true);
+      expect(await marketplace.getListingStatus(1)).to.equal(3);
+    });
+
+    it('Payment fee sent out properly', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      let feeRecipientBalanceBefore = await ethers.provider.getBalance(
+        await marketplace.platformFeeRecipient()
+      );
+      let platformFeeCut =
+        (eth('0.01') * (await marketplace.platformFeeBps())) /
+        (await marketplace.MAX_BPS());
+      await marketplace.buy(1, { value: eth('0.01') });
+      let feeRecipientBalanceAfter = await ethers.provider.getBalance(
+        await marketplace.platformFeeRecipient()
+      );
+      expect(feeRecipientBalanceAfter).to.equal(
+        feeRecipientBalanceBefore + platformFeeCut
+      );
+    });
+
+    it('Payment to seller sent out properly', async function () {
+      await erc721Test.connect(addr1).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.connect(addr1).approve(marketplace.target, 1);
+      await marketplace
+        .connect(addr1)
+        .createListing(erc721Test.target, 1, eth('0.01'), sevenDays, {
+          value: eth('0.01'),
+        });
+      let listing = await marketplace.listings(1);
+      let sellerBalanceBefore = await ethers.provider.getBalance(
+        listing.seller
+      );
+      let platformFeeCut =
+        (eth('0.01') * (await marketplace.platformFeeBps())) /
+        (await marketplace.MAX_BPS());
+      let amtToSeller = eth('0.01') - platformFeeCut;
+      await marketplace.buy(1, { value: eth('0.01') });
+      let sellerBalanceAfter = await ethers.provider.getBalance(listing.seller);
+      expect(sellerBalanceAfter).to.equal(sellerBalanceBefore + amtToSeller);
+    });
+
+    it('Purchased event emitted', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      const tx = await marketplace.buy(1, { value: eth('0.01') });
+      await expect(tx).to.emit(marketplace, 'PurchaseSuccessful').withArgs(1);
+    });
+  });
+
+  describe('Updating Platform Fee and Recipient', function () {
+    it('Only owner can update platform fee recipient', async function () {
+      await expect(
+        marketplace.connect(addr1).setPlatformFeeRecipient(addr1.address)
+      )
+        .to.be.revertedWithCustomError(
+          marketplace,
+          'OwnableUnauthorizedAccount'
+        )
+        .withArgs(addr1);
+    });
+
+    it('Only owner can update platform fee', async function () {
+      await expect(marketplace.connect(addr1).setPlatformFeeBps(0))
+        .to.be.revertedWithCustomError(
+          marketplace,
+          'OwnableUnauthorizedAccount'
+        )
+        .withArgs(addr1);
+    });
+
+    it('platform fee recipient gets updated correctly', async function () {
+      await marketplace.setPlatformFeeRecipient(addr1.address);
+      expect(await marketplace.platformFeeRecipient()).to.equal(addr1.address);
+    });
+
+    it('platform fee recipient updated event gets emitted', async function () {
+      const tx = await marketplace.setPlatformFeeRecipient(addr1.address);
+      await expect(tx)
+        .to.emit(marketplace, 'PlatformFeeRecipientUpdated')
+        .withArgs(addr1.address);
+    });
+
+    it('cannot update platform fee bps more than max', async function () {
+      await expect(marketplace.setPlatformFeeBps(11000))
+        .to.be.revertedWithCustomError(marketplace, 'InvalidBps')
+        .withArgs(11000);
+    });
+
+    it('platform fee bps gets updated correctly', async function () {
+      await marketplace.setPlatformFeeBps(5000);
+      expect(await marketplace.platformFeeBps()).to.equal(5000);
+    });
+
+    it('platform fee bps updated event gets emitted', async function () {
+      const tx = await marketplace.setPlatformFeeBps(5000);
+      await expect(tx)
+        .to.emit(marketplace, 'PlatformFeeBpsUpdated')
+        .withArgs(5000);
     });
   });
 });
