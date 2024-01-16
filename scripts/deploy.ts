@@ -1,4 +1,4 @@
-import hre, { ethers } from 'hardhat';
+import { ethers } from 'hardhat';
 import {
   Marketplace__factory,
   Marketplace,
@@ -10,8 +10,11 @@ import {
 
 async function main() {
   const [owner] = await ethers.getSigners();
+  console.log('owner is ', owner.address);
   const platformFeeRecipient = ethers.Wallet.createRandom();
+  console.log('platform fee recipient is ', platformFeeRecipient.address);
   const royaltyReceiver = ethers.Wallet.createRandom();
+  console.log('royalty receiver is ', royaltyReceiver.address);
   const Marketplace = (await ethers.getContractFactory(
     'Marketplace'
   )) as Marketplace__factory;
@@ -46,21 +49,6 @@ async function main() {
   console.log(`erc721test deployed to ${erc721Test.target}`);
 
   await erc721Test.deploymentTransaction()?.wait(5);
-
-  await hre.run('verify:verify', {
-    address: marketplace.target,
-    constructorArguments: [owner.address, 1000, platformFeeRecipient.address],
-  });
-
-  await hre.run('verify:verify', {
-    address: erc20Test.target,
-    constructorArguments: ['ERC20Test', 'FT'],
-  });
-
-  await hre.run('verify:verify', {
-    address: erc721Test.target,
-    constructorArguments: ['ERC721Test', 'NFT', royaltyReceiver.address, 1000],
-  });
 }
 
 main().catch((error) => {

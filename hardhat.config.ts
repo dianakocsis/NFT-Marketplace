@@ -18,18 +18,25 @@ const config: HardhatUserConfig = {
     enabled: true,
   },
   networks: {
-    hardhat: {},
-    sepolia: {
-      url: process.env.SEPOLIA_ALCHEMY_URL || '',
-      accounts: [process.env.PRIVATE_KEY!],
-    },
-    base_goerli: {
-      url: 'https://goerli.base.org',
+    'base-sepolia': {
+      url: 'https://sepolia.base.org',
       accounts: [process.env.PRIVATE_KEY ?? ''],
     },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
+    apiKey: {
+      'base-sepolia': process.env.ETHERSCAN_API_KEY ?? '',
+    },
+    customChains: [
+      {
+        network: 'base-sepolia',
+        chainId: 84532,
+        urls: {
+          apiURL: 'https://api-sepolia.basescan.org/api',
+          browserURL: 'https://sepolia.basescan.org',
+        },
+      },
+    ],
   },
 };
 export default config;
