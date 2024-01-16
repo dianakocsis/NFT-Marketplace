@@ -125,7 +125,7 @@ describe('Marketplace', function () {
     it('Can create another listing for one that was canceled', async function () {
       await erc721Test.connect(owner).mint();
       let sevenDays = 60 * 60 * 24 * 7;
-      await erc721Test.approve(marketplace.target, 1);
+      await erc721Test.setApprovalForAll(marketplace.target, true);
       await marketplace.createListing(
         erc721Test.target,
         1,
@@ -548,7 +548,7 @@ describe('Marketplace', function () {
         sevenDays,
         { value: eth('0.01') }
       );
-      await marketplace.setPlatformFeeBps(10000);
+      await marketplace.updatePlatformFeeBps(10000);
       await expect(
         marketplace.buy(1, { value: eth('0.01') })
       ).to.be.revertedWithCustomError(marketplace, 'FeesExceedPrice');
@@ -600,7 +600,7 @@ describe('Marketplace', function () {
   describe('Updating Platform Fee and Recipient', function () {
     it('Only owner can update platform fee recipient', async function () {
       await expect(
-        marketplace.connect(addr1).setPlatformFeeRecipient(addr1.address)
+        marketplace.connect(addr1).updatePlatformFeeRecipient(addr1.address)
       )
         .to.be.revertedWithCustomError(
           marketplace,
@@ -610,7 +610,7 @@ describe('Marketplace', function () {
     });
 
     it('Only owner can update platform fee', async function () {
-      await expect(marketplace.connect(addr1).setPlatformFeeBps(0))
+      await expect(marketplace.connect(addr1).updatePlatformFeeBps(0))
         .to.be.revertedWithCustomError(
           marketplace,
           'OwnableUnauthorizedAccount'
@@ -619,30 +619,30 @@ describe('Marketplace', function () {
     });
 
     it('platform fee recipient gets updated correctly', async function () {
-      await marketplace.setPlatformFeeRecipient(addr1.address);
+      await marketplace.updatePlatformFeeRecipient(addr1.address);
       expect(await marketplace.platformFeeRecipient()).to.equal(addr1.address);
     });
 
     it('platform fee recipient updated event gets emitted', async function () {
-      const tx = await marketplace.setPlatformFeeRecipient(addr1.address);
+      const tx = await marketplace.updatePlatformFeeRecipient(addr1.address);
       await expect(tx)
         .to.emit(marketplace, 'PlatformFeeRecipientUpdated')
         .withArgs(addr1.address);
     });
 
     it('cannot update platform fee bps more than max', async function () {
-      await expect(marketplace.setPlatformFeeBps(11000))
+      await expect(marketplace.updatePlatformFeeBps(11000))
         .to.be.revertedWithCustomError(marketplace, 'InvalidBps')
         .withArgs(11000);
     });
 
     it('platform fee bps gets updated correctly', async function () {
-      await marketplace.setPlatformFeeBps(5000);
+      await marketplace.updatePlatformFeeBps(5000);
       expect(await marketplace.platformFeeBps()).to.equal(5000);
     });
 
     it('platform fee bps updated event gets emitted', async function () {
-      const tx = await marketplace.setPlatformFeeBps(5000);
+      const tx = await marketplace.updatePlatformFeeBps(5000);
       await expect(tx)
         .to.emit(marketplace, 'PlatformFeeBpsUpdated')
         .withArgs(5000);
