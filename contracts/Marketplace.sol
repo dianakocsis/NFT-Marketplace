@@ -2,20 +2,15 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Marketplace is Ownable {
 
     uint256 public constant MAX_BPS = 10_000;
-
-    enum Status {
-        Nonexistent,
-        Active,
-        Expired,
-        Sold,
-        Canceled
-    }
+    uint256 public nextListingId = 1;
+    uint256 public platformFeeBps;
+    mapping(uint256 => Listing) public listings;
+    address public platformFeeRecipient;
 
     struct Listing {
         uint256 listingId;
@@ -29,11 +24,13 @@ contract Marketplace is Ownable {
         bool canceled;
     }
 
-    mapping(uint256 => Listing) public listings;
-
-    uint256 public nextListingId = 1;
-    uint256 public platformFeeBps;
-    address public platformFeeRecipient;
+    enum Status {
+        Nonexistent,
+        Active,
+        Expired,
+        Sold,
+        Canceled
+    }
 
     event ListingCreated(uint256 listingId);
     event ListingCanceled(uint256 listingId);
@@ -54,6 +51,11 @@ contract Marketplace is Ownable {
     error FailedToTransferEth();
     error InvalidBps(uint256 invalidAmount);
 
+    constructor(address _owner, uint256 _platformFeeBps, address _platformFeeRecipient) Ownable(_owner) {
+        platformFeeBps = _platformFeeBps;
+        platformFeeRecipient = _platformFeeRecipient;
+    }
+
     modifier onlySeller(uint256 _listingId) {
         if (listings[_listingId].seller != msg.sender) {
             revert OnlySeller();
@@ -68,12 +70,8 @@ contract Marketplace is Ownable {
         _;
     }
 
-    constructor(address _owner, uint256 _platformFeeBps, address _platformFeeRecipient) Ownable(_owner) {
-        platformFeeBps = _platformFeeBps;
-        platformFeeRecipient = _platformFeeRecipient;
-    }
-
     function createListing(address _assetContract, uint256 _tokenId, uint256 _price, uint256 _duration) external payable returns (uint256 listingId) {
+        // make sure you cannot create the same listing for same token id
         if (!_isERC721(_assetContract)) {
             revert NotERC721(_assetContract);
         }
@@ -110,14 +108,12 @@ contract Marketplace is Ownable {
     }
 
     function updatePrice(uint256 _listingId, uint256 _newPrice) external onlySeller(_listingId) onlyActiveListing(_listingId) {
-        Listing storage listing = listings[_listingId];
-        listing.price = _newPrice;
+        listings[_listingId].price = _newPrice;
         emit PriceUpdated(_listingId, _newPrice);
     }
 
     function updateClosingTime(uint256 _listingId, uint256 _newClosingTime) external onlySeller(_listingId) onlyActiveListing(_listingId) {
-        Listing storage listing = listings[_listingId];
-        listing.closingTime = _newClosingTime;
+        listings[_listingId].closingTime = _newClosingTime;
         emit ClosingTimeUpdated(_listingId, _newClosingTime);
     }
 
@@ -132,6 +128,7 @@ contract Marketplace is Ownable {
             revert IncorrectPurchaseAmount(listing.price, msg.value);
         }
         listing.sold = true;
+        emit PurchaseSuccessful(_listingId);
         uint256 platformFeeCut = msg.value * platformFeeBps / MAX_BPS;
         (bool sent, ) = platformFeeRecipient.call{value: platformFeeCut}("");
         if (!sent) {
@@ -141,8 +138,6 @@ contract Marketplace is Ownable {
         if (!success) {
             revert FailedToTransferEth();
         }
-
-        emit PurchaseSuccessful(_listingId);
     }
 
     function setPlatformFeeRecipient(
@@ -167,6 +162,32 @@ contract Marketplace is Ownable {
         emit PlatformFeeBpsUpdated(_platformFeeBps);
     }
 
+    function getTotalListings() view external returns (uint256) {
+        return nextListingId - 1;
+    }
+
+    function getAllListings() external view returns (Listing[] memory) {
+        Listing[] memory allListings = new Listing[](nextListingId - 1);
+        for (uint256 i = 0; i < allListings.length; ++i) {
+            allListings[i] = listings[i+1];
+        }
+        return allListings;
+    }
+
+    function getAllActiveListings() external view returns (Listing[] memory) {
+        uint256 activeListingsLength = _countActiveListings();
+        Listing[] memory activeListings = new Listing[](activeListingsLength);
+        Listing[] memory allListings = new Listing[](nextListingId - 1);
+        uint256 cursor = 0;
+        for (uint256 i = 0; i < allListings.length; ++i) {
+            if (getListingStatus(i+1) == Status.Active) {
+                activeListings[cursor] = listings[i+1];
+                cursor++;
+            }
+        }
+        return activeListings;
+    }
+
     function getListingStatus(uint256 _listingId) public view returns (Status) {
         Listing storage listing = listings[_listingId];
         if (listing.startTime == 0) {
@@ -188,5 +209,15 @@ contract Marketplace is Ownable {
         } catch {
             return false;
         }
+    }
+
+    function _countActiveListings() internal view returns (uint256) {
+        uint256 result = 0;
+        for (uint256 i = 0; i < nextListingId - 1; ++i) {
+            if (getListingStatus(i+1) == Status.Active) {
+                result++;
+            }
+        }
+        return result;
     }
 }

@@ -528,4 +528,65 @@ describe('Marketplace', function () {
         .withArgs(5000);
     });
   });
+
+  describe('Views', function () {
+    it('Total listings', async function () {
+      expect(await marketplace.getTotalListings()).to.equal(0);
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      expect(await marketplace.getTotalListings()).to.equal(1);
+    });
+
+    it('Get all listings', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.cancelListing(1);
+      let allListings = await marketplace.getAllListings();
+      expect(allListings).to.deep.equal([await marketplace.listings(1)]);
+    });
+
+    it('Get all active listings', async function () {
+      await erc721Test.connect(owner).mint();
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await erc721Test.approve(marketplace.target, 2);
+      await marketplace.createListing(
+        erc721Test.target,
+        2,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.cancelListing(1);
+      let allListings = await marketplace.getAllActiveListings();
+      expect(allListings).to.deep.equal([await marketplace.listings(2)]);
+    });
+  });
 });
