@@ -190,20 +190,8 @@ contract Marketplace is Ownable {
         emit PlatformFeeBpsUpdated(_platformFeeBps);
     }
 
-    function getTotalListings() view external returns (uint256) {
-        return nextListingId - 1;
-    }
-
-    function getAllListings() external view returns (Listing[] memory) {
-        Listing[] memory allListings = new Listing[](nextListingId - 1);
-        for (uint256 i = 0; i < allListings.length; ++i) {
-            allListings[i] = listings[i+1];
-        }
-        return allListings;
-    }
-
     function getAllActiveListings() external view returns (Listing[] memory) {
-        uint256 activeListingsLength = _countActiveListings();
+        uint256 activeListingsLength = getTotalActiveListings();
         Listing[] memory activeListings = new Listing[](activeListingsLength);
         Listing[] memory allListings = new Listing[](nextListingId - 1);
         uint256 cursor = 0;
@@ -214,6 +202,28 @@ contract Marketplace is Ownable {
             }
         }
         return activeListings;
+    }
+
+    function getAllListings() external view returns (Listing[] memory) {
+        Listing[] memory allListings = new Listing[](nextListingId - 1);
+        for (uint256 i = 0; i < allListings.length; ++i) {
+            allListings[i] = listings[i+1];
+        }
+        return allListings;
+    }
+
+    function getTotalListings() view external returns (uint256) {
+        return nextListingId - 1;
+    }
+
+    function getTotalActiveListings() public view returns (uint256) {
+        uint256 result = 0;
+        for (uint256 i = 0; i < nextListingId - 1; ++i) {
+            if (getListingStatus(i+1) == Status.Active) {
+                result++;
+            }
+        }
+        return result;
     }
 
     function getListingStatus(uint256 _listingId) public view returns (Status) {
@@ -229,10 +239,6 @@ contract Marketplace is Ownable {
         } else {
             return Status.Active;
         }
-    }
-
-    function _getHash(address _assetContract, uint256 _tokenId) internal pure returns (uint256) {
-        return uint256(keccak256(abi.encode(_assetContract, _tokenId)));
     }
 
     function _isERC721(address _assetContract) internal view returns (bool) {
@@ -254,13 +260,8 @@ contract Marketplace is Ownable {
        }
     }
 
-    function _countActiveListings() internal view returns (uint256) {
-        uint256 result = 0;
-        for (uint256 i = 0; i < nextListingId - 1; ++i) {
-            if (getListingStatus(i+1) == Status.Active) {
-                result++;
-            }
-        }
-        return result;
+    function _getHash(address _assetContract, uint256 _tokenId) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(_assetContract, _tokenId)));
     }
+
 }
