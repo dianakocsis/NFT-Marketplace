@@ -52,6 +52,7 @@ contract Marketplace is Ownable {
     error FailedToTransferEth();
     error InvalidBps(uint256 invalidAmount);
     error ListingAlreadyActive(uint256 listingId);
+    error FeesExceedPrice();
 
     constructor(address _owner, uint256 _platformFeeBps, address _platformFeeRecipient) Ownable(_owner) {
         platformFeeBps = _platformFeeBps;
@@ -137,13 +138,18 @@ contract Marketplace is Ownable {
 
         uint256 platformFeeCut = msg.value * platformFeeBps / MAX_BPS;
 
+        address royaltyRecipient;
+        uint256 royaltyAmount;
+
         try IERC2981(listing.assetContract).royaltyInfo(listing.tokenId, msg.value) returns (
             address royaltyFeeRecipient, uint256 royaltyFeeAmount
         ) {
             if (royaltyFeeRecipient != address(0) && royaltyFeeAmount > 0) {
                 if (royaltyFeeAmount + platformFeeCut > msg.value) {
-                    revert();
+                    revert FeesExceedPrice();
                 }
+                royaltyRecipient = royaltyFeeRecipient;
+                royaltyAmount = royaltyFeeAmount;
                 (bool success, ) = royaltyFeeRecipient.call{value: royaltyFeeAmount}("");
                 if (!success) {
                     revert FailedToTransferEth();
@@ -156,7 +162,7 @@ contract Marketplace is Ownable {
             revert FailedToTransferEth();
         }
 
-        (sent,) = listing.seller.call{value: msg.value - platformFeeCut}("");
+        (sent,) = listing.seller.call{value: msg.value - platformFeeCut - royaltyAmount}("");
         if (!sent) {
             revert FailedToTransferEth();
         }

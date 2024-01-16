@@ -98,6 +98,47 @@ describe('Marketplace', function () {
       ).to.be.revertedWithCustomError(marketplace, 'MarketNotApproved');
     });
 
+    it('Cannot create duplicate listing for one that is already active', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await expect(
+        marketplace.createListing(
+          erc721Test.target,
+          1,
+          eth('0.01'),
+          sevenDays,
+          { value: eth('0.01') }
+        )
+      )
+        .to.be.revertedWithCustomError(marketplace, 'ListingAlreadyActive')
+        .withArgs(1);
+    });
+
+    it('Can create another listing for one that was canceled', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.cancelListing(1);
+      marketplace.createListing(erc721Test.target, 1, eth('0.01'), sevenDays, {
+        value: eth('0.01'),
+      });
+    });
+
     it('Creates the listing', async function () {
       expect(await marketplace.getListingStatus(1)).to.equal(0);
       await erc721Test.connect(owner).mint();
@@ -443,6 +484,34 @@ describe('Marketplace', function () {
       );
     });
 
+    it('Royalty fee sent out properly', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      let [receiver, amt] = await erc721Test.royaltyInfo(1, eth('0.01'));
+      let royaltyRecipientBalanceBefore = await ethers.provider.getBalance(
+        receiver
+      );
+      await marketplace.buy(1, { value: eth('0.01') });
+      let royaltyRecipientBalanceAfter = await ethers.provider.getBalance(
+        receiver
+      );
+      expect(royaltyRecipientBalanceAfter).to.equal(
+        royaltyRecipientBalanceBefore + amt
+      );
+      expect(await ethers.provider.getBalance(receiver)).to.equal(
+        await ethers.provider.getBalance(royaltyReceiver)
+      );
+    });
+
     it('Payment to seller sent out properly', async function () {
       await erc721Test.connect(addr1).mint();
       let sevenDays = 60 * 60 * 24 * 7;
@@ -460,10 +529,55 @@ describe('Marketplace', function () {
       let platformFeeCut =
         (eth('0.01') * (await marketplace.platformFeeBps())) /
         (await marketplace.MAX_BPS());
-      let amtToSeller = eth('0.01') - platformFeeCut;
+      let [receiver, amt] = await erc721Test.royaltyInfo(1, eth('0.01'));
+      let amtToSeller = eth('0.01') - platformFeeCut - amt;
       await marketplace.buy(1, { value: eth('0.01') });
       let sellerBalanceAfter = await ethers.provider.getBalance(listing.seller);
       expect(sellerBalanceAfter).to.equal(sellerBalanceBefore + amtToSeller);
+    });
+
+    it('Fees exceed price', async function () {
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.setPlatformFeeBps(10000);
+      await expect(
+        marketplace.buy(1, { value: eth('0.01') })
+      ).to.be.revertedWithCustomError(marketplace, 'FeesExceedPrice');
+    });
+
+    it('No royalties if not set', async function () {
+      await erc721Test.connect(owner).mint();
+      await erc721Test.connect(owner).mint();
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.approve(marketplace.target, 1);
+      await erc721Test.approve(marketplace.target, 2);
+      await marketplace.createListing(
+        erc721Test.target,
+        1,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      await marketplace.createListing(
+        erc721Test.target,
+        2,
+        eth('0.01'),
+        sevenDays,
+        { value: eth('0.01') }
+      );
+      let [receiver, amt] = await erc721Test.royaltyInfo(2, eth('0.01'));
+      expect(amt).to.equal(0);
+      await marketplace.buy(2, { value: eth('0.01') });
     });
 
     it('Purchased event emitted', async function () {
