@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/interfaces/IERC2981.sol";
 
 contract Marketplace is Ownable {
 
@@ -10,10 +11,10 @@ contract Marketplace is Ownable {
     uint256 public nextListingId = 1;
     uint256 public platformFeeBps;
     mapping(uint256 => Listing) public listings;
+    mapping(uint256 => uint256) private hashToId;
     address public platformFeeRecipient;
 
     struct Listing {
-        uint256 listingId;
         uint256 tokenId;
         uint256 price;
         uint256 startTime;
@@ -27,9 +28,9 @@ contract Marketplace is Ownable {
     enum Status {
         Nonexistent,
         Active,
+        Canceled,
         Expired,
-        Sold,
-        Canceled
+        Sold
     }
 
     event ListingCreated(uint256 listingId);
@@ -50,6 +51,7 @@ contract Marketplace is Ownable {
     error IncorrectPurchaseAmount(uint256 correctAmount, uint256 attemptedAmount);
     error FailedToTransferEth();
     error InvalidBps(uint256 invalidAmount);
+    error ListingAlreadyActive(uint256 listingId);
 
     constructor(address _owner, uint256 _platformFeeBps, address _platformFeeRecipient) Ownable(_owner) {
         platformFeeBps = _platformFeeBps;
@@ -71,27 +73,24 @@ contract Marketplace is Ownable {
     }
 
     function createListing(address _assetContract, uint256 _tokenId, uint256 _price, uint256 _duration) external payable returns (uint256 listingId) {
-        // make sure you cannot create the same listing for same token id
         if (!_isERC721(_assetContract)) {
             revert NotERC721(_assetContract);
         }
 
         listingId = nextListingId++;
+        uint256 h = _getHash(_assetContract, _tokenId);
+        uint256 id = hashToId[h];
+        if (id != 0) {
+            if (getListingStatus(id) == Status.Active) {
+                revert ListingAlreadyActive(id);
+            }
+        }
         uint256 closingTime = block.timestamp + _duration;
-
         uint256 startTime = block.timestamp;
 
-       if (IERC721(_assetContract).ownerOf(_tokenId) != msg.sender) {
-            revert NotTheOwner(msg.sender);
-       }
-
-       if (IERC721(_assetContract).getApproved(_tokenId) != address(this) ||
-                IERC721(_assetContract).isApprovedForAll(msg.sender, address(this))) {
-             revert MarketNotApproved();
-       }
+        _validateListing(_assetContract, _tokenId, msg.sender);
 
         Listing memory listing = Listing({
-            listingId: listingId,
             tokenId: _tokenId,
             price: _price,
             startTime: startTime,
@@ -103,17 +102,22 @@ contract Marketplace is Ownable {
         });
 
         listings[listingId] = listing;
+        hashToId[h] = listingId;
 
         emit ListingCreated(listingId);
     }
 
     function updatePrice(uint256 _listingId, uint256 _newPrice) external onlySeller(_listingId) onlyActiveListing(_listingId) {
-        listings[_listingId].price = _newPrice;
+        Listing storage listing = listings[_listingId];
+        _validateListing(listing.assetContract, listing.tokenId, msg.sender);
+        listing.price = _newPrice;
         emit PriceUpdated(_listingId, _newPrice);
     }
 
     function updateClosingTime(uint256 _listingId, uint256 _newClosingTime) external onlySeller(_listingId) onlyActiveListing(_listingId) {
-        listings[_listingId].closingTime = _newClosingTime;
+        Listing storage listing = listings[_listingId];
+        _validateListing(listing.assetContract, listing.tokenId, msg.sender);
+        listing.closingTime = _newClosingTime;
         emit ClosingTimeUpdated(_listingId, _newClosingTime);
     }
 
@@ -124,18 +128,36 @@ contract Marketplace is Ownable {
 
     function buy(uint256 _listingId) external payable onlyActiveListing(_listingId) {
         Listing storage listing = listings[_listingId];
+        _validateListing(listing.assetContract, listing.tokenId, listing.seller);
         if (msg.value != listing.price) {
             revert IncorrectPurchaseAmount(listing.price, msg.value);
         }
         listing.sold = true;
         emit PurchaseSuccessful(_listingId);
+
         uint256 platformFeeCut = msg.value * platformFeeBps / MAX_BPS;
+
+        try IERC2981(listing.assetContract).royaltyInfo(listing.tokenId, msg.value) returns (
+            address royaltyFeeRecipient, uint256 royaltyFeeAmount
+        ) {
+            if (royaltyFeeRecipient != address(0) && royaltyFeeAmount > 0) {
+                if (royaltyFeeAmount + platformFeeCut > msg.value) {
+                    revert();
+                }
+                (bool success, ) = royaltyFeeRecipient.call{value: royaltyFeeAmount}("");
+                if (!success) {
+                    revert FailedToTransferEth();
+                }
+            }
+        } catch {}
+
         (bool sent, ) = platformFeeRecipient.call{value: platformFeeCut}("");
         if (!sent) {
             revert FailedToTransferEth();
         }
-        (bool success,) = listing.seller.call{value: msg.value - platformFeeCut}("");
-        if (!success) {
+
+        (sent,) = listing.seller.call{value: msg.value - platformFeeCut}("");
+        if (!sent) {
             revert FailedToTransferEth();
         }
     }
@@ -203,12 +225,27 @@ contract Marketplace is Ownable {
         }
     }
 
+    function _getHash(address _assetContract, uint256 _tokenId) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(_assetContract, _tokenId)));
+    }
+
     function _isERC721(address _assetContract) internal view returns (bool) {
         try IERC165(_assetContract).supportsInterface(type(IERC721).interfaceId) returns (bool) {
             return true;
         } catch {
             return false;
         }
+    }
+
+    function _validateListing(address _assetContract, uint256 _tokenId, address _owner) internal view {
+        if (IERC721(_assetContract).ownerOf(_tokenId) != _owner) {
+            revert NotTheOwner(_owner);
+       }
+
+       if (IERC721(_assetContract).getApproved(_tokenId) != address(this) &&
+            !IERC721(_assetContract).isApprovedForAll(msg.sender, address(this))) {
+            revert MarketNotApproved();
+       }
     }
 
     function _countActiveListings() internal view returns (uint256) {

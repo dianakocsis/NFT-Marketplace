@@ -20,12 +20,14 @@ describe('Marketplace', function () {
   let erc721Test: ERC721Test;
   let owner: SignerWithAddress;
   let addr1: SignerWithAddress;
+  let royaltyReceiver: SignerWithAddress;
   let platformFeeRecipient: SignerWithAddress;
 
   const eth = (count: string) => ethers.parseUnits(count, 18);
 
   this.beforeEach(async function () {
-    [owner, platformFeeRecipient, addr1] = await ethers.getSigners();
+    [owner, platformFeeRecipient, addr1, royaltyReceiver] =
+      await ethers.getSigners();
     Marketplace = (await ethers.getContractFactory(
       'Marketplace'
     )) as Marketplace__factory;
@@ -45,7 +47,12 @@ describe('Marketplace', function () {
     ERC721Test = (await ethers.getContractFactory(
       'ERC721Test'
     )) as ERC721Test__factory;
-    erc721Test = (await ERC721Test.deploy('ERC721Test', 'NFT')) as ERC721Test;
+    erc721Test = (await ERC721Test.deploy(
+      'ERC721Test',
+      'NFT',
+      royaltyReceiver,
+      1000
+    )) as ERC721Test;
     await erc721Test.waitForDeployment();
   });
 
@@ -104,7 +111,6 @@ describe('Marketplace', function () {
         { value: eth('0.01') }
       );
       let listing = await marketplace.listings(1);
-      expect(listing.listingId).to.equal(1);
       expect(listing.tokenId).to.equal(1);
       expect(listing.price).to.equal(eth('0.01'));
       expect(listing.startTime).to.equal(await time.latest());
@@ -184,7 +190,7 @@ describe('Marketplace', function () {
       await marketplace.cancelListing(1);
       let listing = await marketplace.listings(1);
       expect(listing.canceled).to.equal(true);
-      expect(await marketplace.getListingStatus(1)).to.equal(4);
+      expect(await marketplace.getListingStatus(1)).to.equal(2);
     });
 
     it('Listing Canceled Event emitted', async function () {
@@ -407,7 +413,7 @@ describe('Marketplace', function () {
       await marketplace.buy(1, { value: eth('0.01') });
       let listing = await marketplace.listings(1);
       expect(listing.sold).to.equal(true);
-      expect(await marketplace.getListingStatus(1)).to.equal(3);
+      expect(await marketplace.getListingStatus(1)).to.equal(4);
     });
 
     it('Payment fee sent out properly', async function () {
