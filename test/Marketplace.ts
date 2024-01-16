@@ -489,6 +489,20 @@ describe('Marketplace', function () {
       expect(sellerBalanceAfter).to.equal(sellerBalanceBefore + amtToSeller);
     });
 
+    it('Token transferred properly', async function () {
+      await erc721Test.connect(addr1).mint();
+      expect(await erc721Test.ownerOf(1)).to.equal(addr1.address);
+      let sevenDays = 60 * 60 * 24 * 7;
+
+      await erc721Test.connect(addr1).approve(marketplace.target, 1);
+      await marketplace
+        .connect(addr1)
+        .createListing(erc721Test.target, 1, eth('0.01'), sevenDays);
+      await marketplace.buy(1, { value: eth('0.01') });
+      let newOwner = await erc721Test.ownerOf(1);
+      expect(newOwner).to.equal(owner.address);
+    });
+
     it('Fees exceed price', async function () {
       await erc721Test.connect(owner).mint();
       let sevenDays = 60 * 60 * 24 * 7;

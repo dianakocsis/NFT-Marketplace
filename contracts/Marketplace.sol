@@ -214,6 +214,8 @@ contract Marketplace is Ownable {
         if (!sent) {
             revert FailedToTransferEth();
         }
+
+        IERC721(listing.assetContract).safeTransferFrom(listing.seller, msg.sender, listing.tokenId);
     }
 
     /// @notice Updates the platform fee recipient
