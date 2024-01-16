@@ -96,7 +96,6 @@ contract Marketplace is Ownable {
         uint256 _duration
     )
         external
-        payable
         returns (uint256 listingId)
     {
         if (!_isERC721(_assetContract)) {
