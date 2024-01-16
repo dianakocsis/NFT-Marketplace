@@ -10,8 +10,8 @@ import {
 
 async function main() {
   const [owner] = await ethers.getSigners();
-  const [platformFeeRecipient] = await ethers.getSigners();
-  const [royaltyReceiver] = await ethers.getSigners();
+  const platformFeeRecipient = ethers.Wallet.createRandom();
+  const royaltyReceiver = ethers.Wallet.createRandom();
   const Marketplace = (await ethers.getContractFactory(
     'Marketplace'
   )) as Marketplace__factory;

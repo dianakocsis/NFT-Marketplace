@@ -23,6 +23,10 @@ const config: HardhatUserConfig = {
       url: process.env.SEPOLIA_ALCHEMY_URL || '',
       accounts: [process.env.PRIVATE_KEY!],
     },
+    base_goerli: {
+      url: 'https://goerli.base.org',
+      accounts: [process.env.PRIVATE_KEY ?? ''],
+    },
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
