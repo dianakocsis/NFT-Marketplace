@@ -189,7 +189,7 @@ contract Marketplace is Ownable {
     }
 
     function getListingStatus(uint256 _listingId) public view returns (Status) {
-        Listing storage listing = listings[_listingId];
+        Listing memory listing = listings[_listingId];
         if (listing.startTime == 0) {
             return Status.Nonexistent;
         } else if (listing.sold) {
