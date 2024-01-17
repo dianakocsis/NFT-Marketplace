@@ -34,4 +34,3 @@ All files | 100 | 94.83 | 100 | 97 | |
 | ----------- | --------------------------------------------------------------------------------- |
 | Marketplace | `https://sepolia.basescan.org/address/0xe951f93b443c2af9c1b3ff94129d86d77fbfce64` |
 | ERC721Test  | `https://sepolia.basescan.org/address/0xbf6e61bd36c8ba7a39dfca4a2c1d698c54e94076` |
-| ERC20Test   | `https://sepolia.basescan.org/address/0xbf6e61bd36c8ba7a39dfca4a2c1d698c54e94076` |
